@@ -155,3 +155,9 @@ if chat_message:
     st.session_state.messages.append({"role": "user", "content": chat_message})
     # 表示用の会話ログにAIメッセージを追加
     st.session_state.messages.append({"role": "assistant", "content": content})
+
+    try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
