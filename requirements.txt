@@ -16,3 +16,4 @@ pymupdf==1.25.0
 
 requests
 beautifulsoup4
+python-dotenv
