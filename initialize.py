@@ -108,35 +108,60 @@ def initialize_retriever():
     # すでにRetrieverが作成済みの場合、後続の処理を中断
     if "retriever" in st.session_state:
         return
-    
-    # RAGの参照先となるデータソースの読み込み
-    docs_all = load_data_sources()
 
-    # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
-    for doc in docs_all:
-        doc.page_content = adjust_string(doc.page_content)
-        for key in doc.metadata:
-            doc.metadata[key] = adjust_string(doc.metadata[key])
-    
+    # ベクターストア保存先（課題指定）
+    CHROMA_DB_DIR = ".healthX_db"
+
     # 埋め込みモデルの用意
     embeddings = OpenAIEmbeddings()
-    
-    # チャンク分割用のオブジェクトを作成
-    text_splitter = CharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50,
-        separator="\n"
-    )
 
-    # チャンク分割を実施
-    splitted_docs = text_splitter.split_documents(docs_all)
+    # すでにDBが存在する場合は読み込み、存在しない場合は新規作成
+    if os.path.isdir(CHROMA_DB_DIR) and os.listdir(CHROMA_DB_DIR):
+        # 既存DB読み込み
+        db = Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embeddings)
+    else:
+        # RAGの参照先となるデータソースの読み込み
+        docs_all = load_data_sources()
 
-    # ベクターストアの作成
-    db = Chroma.from_documents(splitted_docs, embedding=embeddings)
+        # OSがWindowsの場合、Unicode正規化と、cp932（Windows用の文字コード）で表現できない文字を除去
+        for doc in docs_all:
+            doc.page_content = adjust_string(doc.page_content)
+            for key in doc.metadata:
+                doc.metadata[key] = adjust_string(doc.metadata[key])
+
+        # チャンク分割用のオブジェクトを作成
+        text_splitter = CharacterTextSplitter(
+            chunk_size=ct.CHUNK_SIZE,
+            chunk_overlap=ct.CHUNK_OVERLAP,
+            separator="\n"
+        )
+
+        # チャンク分割を実施
+        splitted_docs = text_splitter.split_documents(docs_all)
+
+           # ベクターストアの永続化先（課題指定）
+    persist_dir = getattr(ct, "CHROMA_DB_DIR", ".healthX_db")
+
+    # すでにDBが存在する場合は読み込み、存在しない場合は新規作成して保存
+    if os.path.isdir(persist_dir) and os.listdir(persist_dir):
+        db = Chroma(
+            persist_directory=persist_dir,
+            embedding_function=embeddings
+        )
+    else:
+        db = Chroma.from_documents(
+            documents=splitted_docs,
+            embedding=embeddings,
+            persist_directory=persist_dir
+        )
+
+        # ベクターストアの保存
+        db.persist()
 
     # ベクターストアを検索するRetrieverの作成
-    st.session_state.retriever = db.as_retriever(search_kwargs={"k": 3})
-
+    st.session_state.retriever = db.as_retriever(
+        search_kwargs={"k": ct.RETRIEVER_K}
+    )
 
 def initialize_session_state():
     """

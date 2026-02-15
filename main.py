@@ -20,6 +20,8 @@ import components as cn
 # （自作）変数（定数）がまとめて定義・管理されているモジュール
 import constants as ct
 
+from dotenv import load_dotenv
+load_dotenv()
 
 ############################################################
 # 2. 設定関連
@@ -39,9 +41,10 @@ logger = logging.getLogger(ct.LOGGER_NAME)
 try:
     # 初期化処理（「initialize.py」の「initialize」関数を実行）
     initialize()
-except Exception as e:
+except Exception:
     # エラーログの出力
-    logger.error(f"{ct.INITIALIZE_ERROR_MESSAGE}\n{e}")
+    logger.exception(ct.INITIALIZE_ERROR_MESSAGE)
+    st.exception(e)  # ← これ。開発中だけ
     # エラーメッセージの画面表示
     st.error(utils.build_error_message(ct.INITIALIZE_ERROR_MESSAGE), icon=ct.ERROR_ICON)
     # 後続の処理を中断
@@ -56,15 +59,26 @@ if not "initialized" in st.session_state:
 ############################################################
 # 4. 初期表示
 ############################################################
+# ----------------------------------------------------------
+# 会話履歴クリア（表示が残り続ける対策）
+# ----------------------------------------------------------
+with st.sidebar:
+    if st.button("会話履歴をクリア", key="clear_history"):
+        st.session_state.messages = []
+        st.session_state.chat_history = []
+        st.rerun()
+
+    cn.display_select_mode()
+    cn.display_mode_description()
+    
 # タイトル表示
 cn.display_app_title()
 
 # モード表示
-cn.display_select_mode()
 
 # AIメッセージの初期表示
 cn.display_initial_ai_message()
-
+st.warning("具体的に入力したほうが期待通りの回答を得やすいです。", icon=ct.WARNING_ICON)
 
 ############################################################
 # 5. 会話ログの表示
@@ -72,9 +86,9 @@ cn.display_initial_ai_message()
 try:
     # 会話ログの表示
     cn.display_conversation_log()
-except Exception as e:
+except Exception:
     # エラーログの出力
-    logger.error(f"{ct.CONVERSATION_LOG_ERROR_MESSAGE}\n{e}")
+    logger.exception(ct.CONVERSATION_LOG_ERROR_MESSAGE)
     # エラーメッセージの画面表示
     st.error(utils.build_error_message(ct.CONVERSATION_LOG_ERROR_MESSAGE), icon=ct.ERROR_ICON)
     # 後続の処理を中断
@@ -113,9 +127,9 @@ if chat_message:
             llm_response = utils.get_llm_response(chat_message)
         except Exception as e:
             # エラーログの出力
-            logger.error(f"{ct.GET_LLM_RESPONSE_ERROR_MESSAGE}\n{e}")
+            logger.exception(ct.CONVERSATION_LOG_ERROR_MESSAGE)
             # エラーメッセージの画面表示
-            st.error(utils.build_error_message(ct.GET_LLM_RESPONSE_ERROR_MESSAGE), icon=ct.ERROR_ICON)
+            st.error(utils.build_error_message(ct.CONVERSATION_LOG_ERROR_MESSAGE), icon=ct.ERROR_ICON)
             # 後続の処理を中断
             st.stop()
     
@@ -148,10 +162,20 @@ if chat_message:
             # 後続の処理を中断
             st.stop()
 
-    # ==========================================
-    # 7-4. 会話ログへの追加
-    # ==========================================
-    # 表示用の会話ログにユーザーメッセージを追加
+# ==========================================
+# 7-4. 会話ログへの追加
+# ==========================================
+# 表示用の会話ログにユーザーメッセージを追加
     st.session_state.messages.append({"role": "user", "content": chat_message})
-    # 表示用の会話ログにAIメッセージを追加
+
+    # contentが文字列の場合は辞書形式に統一（表示側が扱いやすい）
+    if isinstance(content, str):
+        content = {
+            "mode": st.session_state.mode,
+            "answer": content,
+            "no_file_path_flg": True,
+        }
+
+    # 表示用の会話ログにAIメッセージを追加（dictのまま入れる）
     st.session_state.messages.append({"role": "assistant", "content": content})
+

@@ -7,7 +7,7 @@
 ############################################################
 from langchain_community.document_loaders import PyMuPDFLoader, Docx2txtLoader, TextLoader
 from langchain_community.document_loaders.csv_loader import CSVLoader
-
+from langchain_community.document_loaders import TextLoader
 
 ############################################################
 # 共通変数の定義
@@ -25,6 +25,8 @@ LINK_SOURCE_ICON = ":material/link: "
 WARNING_ICON = ":material/warning:"
 ERROR_ICON = ":material/error:"
 SPINNER_TEXT = "回答生成中..."
+# ChromaDBの保存先ディレクトリ
+CHROMA_DB_DIR = ".healthX_db"
 
 
 # ==========================================
@@ -50,17 +52,38 @@ RAG_TOP_FOLDER_PATH = "./data"
 SUPPORTED_EXTENSIONS = {
     ".pdf": PyMuPDFLoader,
     ".docx": Docx2txtLoader,
-    ".csv": lambda path: CSVLoader(path, encoding="utf-8")
+    ".csv": lambda path: CSVLoader(path, encoding="utf-8"),
+    ".txt": lambda p: TextLoader(p, encoding="utf-8"), # ← 追加
 }
 WEB_URL_LOAD_TARGETS = [
     "https://generative-ai.web-camp.io/"
 ]
-
+# ==========================================
+# RAG（Retriever / Chunk）設定
+# ==========================================
+RETRIEVER_K = 5
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
 
 # ==========================================
 # プロンプトテンプレート
 # ==========================================
-SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT = "会話履歴と最新の入力をもとに、会話履歴なしでも理解できる独立した入力テキストを生成してください。"
+SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT = """
+あなたはユーザーの最新入力を、会話履歴なしでも理解できる「独立した質問文」に書き換えるアシスタントです。
+
+ルール:
+- 文章が短すぎる（例: 1〜2語、固有名詞だけ、キーワードだけ）場合は、
+  ユーザーの意図が「そのキーワードに関する社内文書の記載を知りたい」だと解釈して、
+  次の形式に補完して質問文を生成してください。
+  例:
+    入力: "中村"
+    出力: "社内文書の文脈をもとに『中村』に関して分かること（役割・関係者・発言内容・関連トピック）を要約して。根拠となる文書も示して。"
+
+- 入力が質問文として十分なら、意味を変えずに自然な日本語へ整形する。
+- 出力は「質問文」だけ。余計な説明は書かない。
+
+会話履歴と最新の入力をもとに、独立した入力テキストを生成してください。
+"""
 
 SYSTEM_PROMPT_DOC_SEARCH = """
     あなたは社内の文書検索アシスタントです。
@@ -85,11 +108,11 @@ SYSTEM_PROMPT_INQUIRY = """
     4. できる限り詳細に、マークダウン記法を使って回答してください。
     5. マークダウン記法で回答する際にhタグの見出しを使う場合、最も大きい見出しをh3としてください。
     6. 複雑な質問の場合、各項目についてそれぞれ詳細に回答してください。
-    7. 必要と判断した場合は、以下の文脈に基づかずとも、一般的な情報を回答してください。
 
     {context}
 """
-
+# 旧仕様：
+# 7. 必要と判断した場合は、以下の文脈に基づかずとも、一般的な情報を回答してください。
 
 # ==========================================
 # LLMレスポンスの一致判定用

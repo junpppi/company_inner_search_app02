@@ -62,17 +62,12 @@ def build_error_message(message):
 def get_llm_response(chat_message):
     """
     LLMからの回答取得
-
-    Args:
-        chat_message: ユーザー入力値
-
-    Returns:
-        LLMからの回答
     """
+
     # LLMのオブジェクトを用意
     llm = ChatOpenAI(model_name=ct.MODEL, temperature=ct.TEMPERATURE)
 
-    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのプロンプトテンプレートを作成
+    # 会話履歴なしでも理解できる入力を生成するプロンプト
     question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
     question_generator_prompt = ChatPromptTemplate.from_messages(
         [
@@ -82,14 +77,12 @@ def get_llm_response(chat_message):
         ]
     )
 
-    # モードによってLLMから回答を取得する用のプロンプトを変更
+    # モード分岐
     if st.session_state.mode == ct.ANSWER_MODE_1:
-        # モードが「社内文書検索」の場合のプロンプト
         question_answer_template = ct.SYSTEM_PROMPT_DOC_SEARCH
     else:
-        # モードが「社内問い合わせ」の場合のプロンプト
         question_answer_template = ct.SYSTEM_PROMPT_INQUIRY
-    # LLMから回答を取得する用のプロンプトテンプレートを作成
+
     question_answer_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", question_answer_template),
@@ -98,19 +91,48 @@ def get_llm_response(chat_message):
         ]
     )
 
-    # 会話履歴なしでもLLMに理解してもらえる、独立した入力テキストを取得するためのRetrieverを作成
+    # Retriever
     history_aware_retriever = create_history_aware_retriever(
         llm, st.session_state.retriever, question_generator_prompt
     )
 
-    # LLMから回答を取得する用のChainを作成
+    # Chain作成
     question_answer_chain = create_stuff_documents_chain(llm, question_answer_prompt)
-    # 「RAG x 会話履歴の記憶機能」を実現するためのChainを作成
     chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-    # LLMへのリクエストとレスポンス取得
-    llm_response = chain.invoke({"input": chat_message, "chat_history": st.session_state.chat_history})
-    # LLMレスポンスを会話履歴に追加
-    st.session_state.chat_history.extend([HumanMessage(content=chat_message), llm_response["answer"]])
+    # 実行
+    llm_response = chain.invoke(
+       {"input": chat_message, "chat_history": st.session_state.chat_history}
+    )
+    ctx = llm_response.get("context") or []
+    print("[DEBUG] context_len =", len(ctx))
+    # 追加デバッグ（先頭ドキュメントの中身確認）
+    if len(ctx) > 0:
+        top = ctx[0]
+        top_source = (top.metadata.get("source") if hasattr(top, "metadata") else None)
+        top_text = (top.page_content if hasattr(top, "page_content") else "")
+        print("[DEBUG] top_source =", top_source)
+        print("[DEBUG] top_text_len =", len(top_text))
+        print("[DEBUG] top_text_head =", top_text[:120].replace("\n", " "))
+    else:
+        print("[DEBUG] top_source = (none)")
+    # print("[DEBUG]", st.session_state.mode, "context_len=", len(ctx))
+    # if ctx:
+    #     d0 = ctx[0]
+    #     src = d0.metadata.get("source", "NO_SOURCE")
+    #     txt = d0.page_content or ""
+    #     print("[DEBUG] top_source =", src)
+    #     print("[DEBUG] top_text_len =", len(txt))
+    #     print("[DEBUG] top_text_head =", txt[:120].replace("\n", " "))
+    # else:
+    #     print("[DEBUG] no context returned")
+    
+    # 会話履歴更新（ここ重要）
+    from langchain.schema import AIMessage
+    st.session_state.chat_history.extend([
+        HumanMessage(content=chat_message),
+        AIMessage(content=llm_response["answer"])
+
+    ])
 
     return llm_response
